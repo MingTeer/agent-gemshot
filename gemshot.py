@@ -1,5 +1,7 @@
 """agent-gemshot: Screenshot any Windows process window via CLI."""
 
+import argparse
+import json
 import os
 import sys
 from datetime import datetime
@@ -31,6 +33,25 @@ def list_windows():
 
     win32gui.EnumWindows(_callback, None)
     return results
+
+
+def _build_choice_map(windows):
+    """Return display-label-to-hwnd mapping for interactive selection."""
+    base_counts = {}
+
+    for _, title, proc in windows:
+        base_label = f"[{proc}] {title}"
+        base_counts[base_label] = base_counts.get(base_label, 0) + 1
+
+    choice_map = {}
+    for hwnd, title, proc in windows:
+        base_label = f"[{proc}] {title}"
+        label = base_label
+        if base_counts[base_label] > 1:
+            label = f"{base_label} (hwnd: {hwnd})"
+        choice_map[label] = hwnd
+
+    return choice_map
 
 
 def _printwindow_capture(hwnd, width, height):
@@ -68,6 +89,7 @@ def _printwindow_capture(hwnd, width, height):
 
 def capture_window(hwnd):
     """Capture window by hwnd. Returns PIL Image. Falls back to screen grab on failure."""
+    win32gui.SetForegroundWindow(hwnd)
     left, top, right, bottom = win32gui.GetWindowRect(hwnd)
     width = right - left
     height = bottom - top
@@ -86,6 +108,15 @@ def save_image(img):
     return path
 
 
+def cmd_list():
+    """Print all visible windows as a JSON array to stdout."""
+    windows = list_windows()
+    print(json.dumps([
+        {"hwnd": hwnd, "title": title, "proc": proc}
+        for hwnd, title, proc in windows
+    ]))
+
+
 def main():
     """CLI entry point: list windows, let user pick, capture, save."""
     windows = list_windows()
@@ -94,19 +125,22 @@ def main():
         print("未找到可用窗口。")
         sys.exit(0)
 
-    choices = [
-        questionary.Choice(title=f"[{proc}] {title}", value=hwnd)
-        for hwnd, title, proc in windows
-    ]
+    choice_map = _build_choice_map(windows)
 
     try:
-        hwnd = questionary.select(
-            "选择要截图的窗口（方向键选择，回车确认，Ctrl+C 退出）:",
-            choices=choices,
+        choice = questionary.autocomplete(
+            "选择要截图的窗口（输入关键词过滤，回车确认，Ctrl+C 退出）:",
+            choices=list(choice_map),
+            match_middle=True,
+            validate=lambda value: value in choice_map,
         ).ask()
     except KeyboardInterrupt:
         sys.exit(0)
 
+    if choice is None:
+        sys.exit(0)
+
+    hwnd = choice_map.get(choice)
     if hwnd is None:
         sys.exit(0)
 
