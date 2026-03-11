@@ -234,3 +234,52 @@ def test_cmd_list_outputs_empty_array_when_no_windows(capsys):
 
     out = capsys.readouterr().out
     assert json.loads(out) == []
+
+
+def test_cmd_capture_outputs_json_on_success(capsys, tmp_path, monkeypatch):
+    """cmd_capture prints JSON {path, hwnd, title, width, height} on success."""
+    monkeypatch.chdir(tmp_path)
+    windows = [(12345, "Notepad", "notepad.exe")]
+    fake_img = PILImage.new("RGB", (800, 600))
+
+    with patch("gemshot.list_windows", return_value=windows), \
+         patch("gemshot.capture_window", return_value=fake_img):
+        gemshot.cmd_capture(12345)
+
+    out = capsys.readouterr().out
+    data = json.loads(out)
+    assert data["hwnd"] == 12345
+    assert data["title"] == "Notepad"
+    assert data["width"] == 800
+    assert data["height"] == 600
+    assert data["path"].endswith(".png")
+
+
+def test_cmd_capture_prints_error_and_exits_when_hwnd_not_found(capsys):
+    """cmd_capture writes JSON error to stderr and exits 1 when hwnd is unknown."""
+    windows = [(99999, "Other", "other.exe")]
+
+    with patch("gemshot.list_windows", return_value=windows), \
+         pytest.raises(SystemExit) as exc_info:
+        gemshot.cmd_capture(12345)
+
+    assert exc_info.value.code == 1
+    err = capsys.readouterr().err
+    data = json.loads(err)
+    assert "not found" in data["error"]
+
+
+def test_cmd_capture_prints_error_and_exits_on_capture_failure(capsys, tmp_path, monkeypatch):
+    """cmd_capture writes JSON error to stderr and exits 1 when capture raises."""
+    monkeypatch.chdir(tmp_path)
+    windows = [(12345, "Notepad", "notepad.exe")]
+
+    with patch("gemshot.list_windows", return_value=windows), \
+         patch("gemshot.capture_window", side_effect=Exception("win32 error")), \
+         pytest.raises(SystemExit) as exc_info:
+        gemshot.cmd_capture(12345)
+
+    assert exc_info.value.code == 1
+    err = capsys.readouterr().err
+    data = json.loads(err)
+    assert "win32 error" in data["error"]

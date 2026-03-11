@@ -117,6 +117,29 @@ def cmd_list():
     ]))
 
 
+def cmd_capture(hwnd: int):
+    """Capture window by hwnd; print JSON result to stdout or error to stderr."""
+    windows = list_windows()
+    title = next((t for h, t, _ in windows if h == hwnd), None)
+    if title is None:
+        print(json.dumps({"error": f"hwnd {hwnd} not found"}), file=sys.stderr)
+        sys.exit(1)
+
+    try:
+        img = capture_window(hwnd)
+        path = save_image(img)
+        print(json.dumps({
+            "path": path,
+            "hwnd": hwnd,
+            "title": title,
+            "width": img.width,
+            "height": img.height,
+        }))
+    except Exception as e:
+        print(json.dumps({"error": str(e)}), file=sys.stderr)
+        sys.exit(1)
+
+
 def main():
     """CLI entry point: list windows, let user pick, capture, save."""
     windows = list_windows()
