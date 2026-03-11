@@ -2,11 +2,15 @@
 
 import argparse
 import ctypes
+import io
 import json
 import os
 import sys
 from datetime import datetime
 
+from dotenv import load_dotenv
+from google import genai
+from google.genai import types
 import psutil
 import questionary
 import win32gui
@@ -125,6 +129,39 @@ def save_image(img):
     path = os.path.join(os.getcwd(), filename)
     img.save(path)
     return path
+
+
+def analyze_with_gemini(img, prompt):
+    """Send PIL Image + prompt to Gemini and return the reply text.
+
+    Reads GEMINI_API_KEY, GEMINI_MODEL, GOOGLE_GEMINI_BASE_URL from environment.
+    Raises ValueError if GEMINI_API_KEY is not set.
+    """
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        raise ValueError("GEMINI_API_KEY not set")
+
+    model = os.environ.get("GEMINI_MODEL", "gemini-2.0-flash")
+    base_url = os.environ.get("GOOGLE_GEMINI_BASE_URL", "")
+
+    client_kwargs = {"api_key": api_key}
+    if base_url:
+        client_kwargs["http_options"] = {"base_url": base_url}
+
+    client = genai.Client(**client_kwargs)
+
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    png_bytes = buf.getvalue()
+
+    response = client.models.generate_content(
+        model=model,
+        contents=[
+            types.Part.from_bytes(data=png_bytes, mime_type="image/png"),
+            prompt,
+        ],
+    )
+    return response.text
 
 
 def cmd_list():

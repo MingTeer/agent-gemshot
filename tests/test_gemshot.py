@@ -375,3 +375,69 @@ def test_main_falls_through_to_interactive_when_no_subcommand():
 
     mock_list.assert_not_called()
     mock_capture.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# analyze_with_gemini
+# ---------------------------------------------------------------------------
+
+def test_analyze_with_gemini_calls_sdk_and_returns_text(monkeypatch):
+    """analyze_with_gemini sends PNG bytes + prompt to Gemini and returns reply text."""
+    from unittest.mock import MagicMock, patch as _patch
+    from PIL import Image as PILImage
+
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+    monkeypatch.setenv("GEMINI_MODEL", "gemini-test-model")
+    monkeypatch.delenv("GOOGLE_GEMINI_BASE_URL", raising=False)
+
+    fake_response = MagicMock()
+    fake_response.text = "界面看起来正常。"
+
+    fake_client = MagicMock()
+    fake_client.models.generate_content.return_value = fake_response
+
+    img = PILImage.new("RGB", (100, 100), color=(0, 128, 255))
+
+    with _patch("gemshot.genai.Client", return_value=fake_client) as mock_client_cls:
+        result = gemshot.analyze_with_gemini(img, "分析这个界面")
+
+    assert result == "界面看起来正常。"
+    mock_client_cls.assert_called_once_with(api_key="test-key")
+    fake_client.models.generate_content.assert_called_once()
+    call_kwargs = fake_client.models.generate_content.call_args
+    assert call_kwargs.kwargs["model"] == "gemini-test-model"
+
+
+def test_analyze_with_gemini_passes_base_url_when_set(monkeypatch):
+    """analyze_with_gemini sets http_options when GOOGLE_GEMINI_BASE_URL is present."""
+    from unittest.mock import MagicMock, patch as _patch
+    from PIL import Image as PILImage
+
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+    monkeypatch.setenv("GEMINI_MODEL", "gemini-test-model")
+    monkeypatch.setenv("GOOGLE_GEMINI_BASE_URL", "https://proxy.example.com")
+
+    fake_response = MagicMock()
+    fake_response.text = "ok"
+    fake_client = MagicMock()
+    fake_client.models.generate_content.return_value = fake_response
+
+    img = PILImage.new("RGB", (10, 10))
+
+    with _patch("gemshot.genai.Client", return_value=fake_client) as mock_client_cls:
+        gemshot.analyze_with_gemini(img, "test prompt")
+
+    mock_client_cls.assert_called_once_with(
+        api_key="test-key",
+        http_options={"base_url": "https://proxy.example.com"},
+    )
+
+
+def test_analyze_with_gemini_raises_when_api_key_missing(monkeypatch):
+    """analyze_with_gemini raises ValueError when GEMINI_API_KEY is not set."""
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    from PIL import Image as PILImage
+
+    img = PILImage.new("RGB", (10, 10))
+    with pytest.raises(ValueError, match="GEMINI_API_KEY"):
+        gemshot.analyze_with_gemini(img, "test")
