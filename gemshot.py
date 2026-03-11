@@ -141,9 +141,29 @@ def cmd_capture(hwnd: int):
 
 
 def main():
-    """CLI entry point: list windows, let user pick, capture, save."""
-    windows = list_windows()
+    """CLI entry point. No args → interactive. Subcommands: list, capture <hwnd>."""
+    parser = argparse.ArgumentParser(
+        prog="agent-gemshot",
+        description="Screenshot any Windows process window.",
+    )
+    subparsers = parser.add_subparsers(dest="cmd")
 
+    subparsers.add_parser("list", help="Print visible windows as JSON array.")
+
+    capture_parser = subparsers.add_parser("capture", help="Screenshot a window by hwnd.")
+    capture_parser.add_argument("hwnd", type=int, help="Window handle (from 'list').")
+
+    args = parser.parse_args()
+
+    if args.cmd == "list":
+        cmd_list()
+        return
+    if args.cmd == "capture":
+        cmd_capture(args.hwnd)
+        return
+
+    # No subcommand: original interactive mode
+    windows = list_windows()
     if not windows:
         print("未找到可用窗口。")
         sys.exit(0)

@@ -162,6 +162,7 @@ def test_main_exits_with_message_when_no_windows():
     stdout = StringIO()
 
     with patch("gemshot.list_windows", return_value=[]), \
+         patch("sys.argv", ["agent-gemshot"]), \
          contextlib.redirect_stdout(stdout), \
          pytest.raises(SystemExit) as exc_info:
         gemshot.main()
@@ -184,6 +185,7 @@ def test_main_uses_autocomplete_choice_mapping():
          patch("questionary.autocomplete") as mock_autocomplete, \
          patch("gemshot.capture_window", return_value=image) as mock_capture, \
          patch("gemshot.save_image", return_value=r"C:\tmp\gemshot_20260311_120000.png"), \
+         patch("sys.argv", ["agent-gemshot"]), \
          contextlib.redirect_stdout(stdout):
         mock_autocomplete.return_value.ask.return_value = "[beta.exe] Beta Window"
         gemshot.main()
@@ -203,6 +205,7 @@ def test_main_exits_when_autocomplete_returns_unknown_label():
     with patch("gemshot.list_windows", return_value=windows), \
          patch("questionary.select", side_effect=AssertionError("select should not be used")), \
          patch("questionary.autocomplete") as mock_autocomplete, \
+         patch("sys.argv", ["agent-gemshot"]), \
          pytest.raises(SystemExit) as exc_info:
         mock_autocomplete.return_value.ask.return_value = "not-a-real-choice"
         gemshot.main()
@@ -283,3 +286,43 @@ def test_cmd_capture_prints_error_and_exits_on_capture_failure(capsys, tmp_path,
     err = capsys.readouterr().err
     data = json.loads(err)
     assert "win32 error" in data["error"]
+
+
+def test_main_routes_list_subcommand():
+    """main() with ['list'] calls cmd_list()."""
+    with patch("gemshot.cmd_list") as mock_list, \
+         patch("sys.argv", ["agent-gemshot", "list"]):
+        gemshot.main()
+
+    mock_list.assert_called_once()
+
+
+def test_main_routes_capture_subcommand():
+    """main() with ['capture', '12345'] calls cmd_capture(12345)."""
+    with patch("gemshot.cmd_capture") as mock_capture, \
+         patch("sys.argv", ["agent-gemshot", "capture", "12345"]):
+        gemshot.main()
+
+    mock_capture.assert_called_once_with(12345)
+
+
+def test_main_capture_rejects_non_integer_hwnd():
+    """main() with ['capture', 'abc'] exits with code 2 (argparse error)."""
+    with patch("sys.argv", ["agent-gemshot", "capture", "abc"]), \
+         pytest.raises(SystemExit) as exc_info:
+        gemshot.main()
+
+    assert exc_info.value.code == 2
+
+
+def test_main_falls_through_to_interactive_when_no_subcommand():
+    """main() with no args calls the interactive flow, not cmd_list/cmd_capture."""
+    with patch("gemshot.cmd_list") as mock_list, \
+         patch("gemshot.cmd_capture") as mock_capture, \
+         patch("gemshot.list_windows", return_value=[]), \
+         patch("sys.argv", ["agent-gemshot"]), \
+         pytest.raises(SystemExit):  # exits 0 on empty window list
+        gemshot.main()
+
+    mock_list.assert_not_called()
+    mock_capture.assert_not_called()
