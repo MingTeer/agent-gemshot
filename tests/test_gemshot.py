@@ -89,3 +89,34 @@ def test_save_image_filename_format(tmp_path, monkeypatch):
     path = gemshot.save_image(img)
     filename = os.path.basename(path)
     assert re.match(r"gemshot_\d{8}_\d{6}\.png", filename)
+
+
+def test_capture_window_returns_pil_image():
+    """capture_window returns a PIL Image when PrintWindow succeeds."""
+    mock_hwnd = 12345
+    mock_rect = (0, 0, 800, 600)
+    fake_image = PILImage.new("RGB", (800, 600))
+
+    with patch("win32gui.SetForegroundWindow"), \
+         patch("win32gui.GetWindowRect", return_value=mock_rect), \
+         patch("gemshot._printwindow_capture", return_value=fake_image):
+        result = gemshot.capture_window(mock_hwnd)
+
+    assert isinstance(result, PILImage.Image)
+    assert result.size == (800, 600)
+
+
+def test_capture_window_falls_back_to_imagegrab_on_error():
+    """capture_window falls back to ImageGrab.grab when PrintWindow fails."""
+    mock_hwnd = 12345
+    mock_rect = (10, 20, 500, 400)
+    fake_image = PILImage.new("RGB", (490, 380))
+
+    with patch("win32gui.SetForegroundWindow"), \
+         patch("win32gui.GetWindowRect", return_value=mock_rect), \
+         patch("gemshot._printwindow_capture", side_effect=RuntimeError("fail")), \
+         patch("PIL.ImageGrab.grab", return_value=fake_image) as mock_grab:
+        result = gemshot.capture_window(mock_hwnd)
+
+    mock_grab.assert_called_once_with(bbox=(10, 20, 500, 400))
+    assert isinstance(result, PILImage.Image)
