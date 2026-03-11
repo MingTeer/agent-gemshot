@@ -1,6 +1,6 @@
 # agent-gemshot
 
-Windows CLI tool to screenshot any process window interactively.
+Windows CLI tool to screenshot visible Qt / PyQt / PySide windows.
 
 ## Install
 
@@ -14,7 +14,7 @@ pip install -e .
 agent-gemshot
 ```
 
-Type keywords to filter visible windows, then confirm the desired entry to capture it. If multiple windows share the same label, the prompt appends `hwnd` so each choice stays distinct. The screenshot is saved as `gemshot_YYYYMMDD_HHMMSS.png` in the current directory.
+Type keywords to filter visible Qt windows, then confirm the desired entry to capture it. If multiple windows share the same label, the prompt appends `hwnd` so each choice stays distinct. The screenshot is saved as `gemshot_YYYYMMDD_HHMMSS.png` in the current directory.
 
 > **Note:** Run from cmd.exe or PowerShell (not Git Bash) for the interactive menu to work correctly.
 
@@ -30,8 +30,8 @@ Output:
 
 ```json
 [
-  {"hwnd": 12345, "title": "Notepad", "proc": "notepad.exe"},
-  {"hwnd": 67890, "title": "Chrome - Google", "proc": "chrome.exe"}
+  {"hwnd": 12345, "title": "Login", "proc": "python.exe"},
+  {"hwnd": 67890, "title": "Settings", "proc": "python.exe"}
 ]
 ```
 
@@ -44,7 +44,7 @@ agent-gemshot capture 12345
 Success output (stdout):
 
 ```json
-{"path": "C:\\...\\gemshot_20260311_153045.png", "hwnd": 12345, "title": "Notepad", "width": 800, "height": 600}
+{"path": "C:\\...\\gemshot_20260311_153045.png", "hwnd": 12345, "title": "Login", "width": 380, "height": 160}
 ```
 
 Error output (stderr, exit code 1):
@@ -57,6 +57,7 @@ Error output (stderr, exit code 1):
 
 - Windows 10+
 - Python 3.8+
+- Visible Qt / PyQt / PySide top-level windows
 
 ## Dependencies
 

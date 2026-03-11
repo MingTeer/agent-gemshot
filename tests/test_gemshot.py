@@ -11,8 +11,8 @@ from PIL import Image as PILImage
 import gemshot
 
 
-def test_list_windows_returns_visible_windows_with_titles():
-    """list_windows returns (hwnd, title, proc_name) for visible titled windows."""
+def test_list_windows_returns_visible_qt_windows_with_titles():
+    """list_windows returns (hwnd, title, proc_name) for visible Qt windows."""
     mock_hwnd = 12345
     mock_pid = 999
 
@@ -21,6 +21,8 @@ def test_list_windows_returns_visible_windows_with_titles():
 
     with patch("win32gui.EnumWindows", side_effect=fake_enum), \
          patch("win32gui.IsWindowVisible", return_value=True), \
+         patch("win32gui.IsIconic", return_value=False), \
+         patch("win32gui.GetClassName", return_value="Qt6102QWindowIcon"), \
          patch("win32gui.GetWindowText", return_value="My Window"), \
          patch("win32process.GetWindowThreadProcessId", return_value=(0, mock_pid)), \
          patch("psutil.Process") as mock_proc:
@@ -43,6 +45,21 @@ def test_list_windows_skips_invisible_windows():
     assert result == []
 
 
+def test_list_windows_skips_non_qt_windows():
+    """list_windows excludes visible non-Qt windows."""
+    def fake_enum(callback, extra):
+        callback(99, extra)
+
+    with patch("win32gui.EnumWindows", side_effect=fake_enum), \
+         patch("win32gui.IsWindowVisible", return_value=True), \
+         patch("win32gui.IsIconic", return_value=False), \
+         patch("win32gui.GetClassName", return_value="Chrome_WidgetWin_1"), \
+         patch("win32gui.GetWindowText", return_value="Browser"):
+        result = gemshot.list_windows()
+
+    assert result == []
+
+
 def test_list_windows_skips_empty_title_windows():
     """list_windows excludes windows with empty titles."""
     def fake_enum(callback, extra):
@@ -50,6 +67,8 @@ def test_list_windows_skips_empty_title_windows():
 
     with patch("win32gui.EnumWindows", side_effect=fake_enum), \
          patch("win32gui.IsWindowVisible", return_value=True), \
+         patch("win32gui.IsIconic", return_value=False), \
+         patch("win32gui.GetClassName", return_value="Qt6102QWindowIcon"), \
          patch("win32gui.GetWindowText", return_value=""):
         result = gemshot.list_windows()
 
@@ -66,6 +85,8 @@ def test_list_windows_uses_unknown_for_inaccessible_processes():
 
     with patch("win32gui.EnumWindows", side_effect=fake_enum), \
          patch("win32gui.IsWindowVisible", return_value=True), \
+         patch("win32gui.IsIconic", return_value=False), \
+         patch("win32gui.GetClassName", return_value="Qt6102QWindowIcon"), \
          patch("win32gui.GetWindowText", return_value="Some Window"), \
          patch("win32process.GetWindowThreadProcessId", return_value=(0, mock_pid)), \
          patch("psutil.Process") as mock_proc:
@@ -73,6 +94,21 @@ def test_list_windows_uses_unknown_for_inaccessible_processes():
         result = gemshot.list_windows()
 
     assert result == [(mock_hwnd, "Some Window", "unknown")]
+
+
+def test_list_windows_skips_minimized_windows():
+    """list_windows excludes minimized windows even if IsWindowVisible is True."""
+    def fake_enum(callback, extra):
+        callback(99, extra)
+
+    with patch("win32gui.EnumWindows", side_effect=fake_enum), \
+         patch("win32gui.IsWindowVisible", return_value=True), \
+         patch("win32gui.IsIconic", return_value=True), \
+         patch("win32gui.GetClassName", return_value="Qt6102QWindowIcon"), \
+         patch("win32gui.GetWindowText", return_value="Minimized"):
+        result = gemshot.list_windows()
+
+    assert result == []
 
 
 def test_build_choice_map_disambiguates_duplicate_labels():
@@ -111,51 +147,64 @@ def test_save_image_filename_format(tmp_path, monkeypatch):
     assert re.match(r"gemshot_\d{8}_\d{6}\.png", filename)
 
 
-def test_capture_window_returns_pil_image():
-    """capture_window returns a PIL Image when PrintWindow succeeds."""
+def test_capture_window_raises_on_minimized_window():
+    """capture_window rejects minimized windows instead of returning a black image."""
     mock_hwnd = 12345
-    mock_rect = (0, 0, 800, 600)
-    fake_image = PILImage.new("RGB", (800, 600))
 
-    with patch("win32gui.SetForegroundWindow"), \
-         patch("win32gui.GetWindowRect", return_value=mock_rect), \
-         patch("gemshot._printwindow_capture", return_value=fake_image):
+    with patch("win32gui.IsIconic", return_value=True), \
+         patch("win32gui.GetClassName", return_value="Qt6102QWindowIcon"):
+        with pytest.raises(RuntimeError, match="minimized"):
+            gemshot.capture_window(mock_hwnd)
+
+
+def test_capture_window_raises_on_non_qt_window():
+    """capture_window rejects non-Qt windows."""
+    mock_hwnd = 12345
+
+    with patch("win32gui.IsIconic", return_value=False), \
+         patch("win32gui.GetClassName", return_value="Chrome_WidgetWin_1"):
+        with pytest.raises(RuntimeError, match="Qt"):
+            gemshot.capture_window(mock_hwnd)
+
+
+def test_capture_window_uses_printwindow_for_qt_windows():
+    """Qt/PySide windows prefer native PrintWindow capture."""
+    mock_hwnd = 12345
+    fake_image = PILImage.new("RGB", (380, 160))
+
+    with patch("win32gui.IsIconic", return_value=False), \
+         patch("win32gui.GetClassName", return_value="Qt6102QWindowIcon"), \
+         patch("win32gui.GetWindowRect", return_value=(10, 20, 390, 180)), \
+         patch("gemshot._printwindow_capture", return_value=fake_image) as mock_print, \
+         patch("PIL.ImageGrab.grab") as mock_grab:
         result = gemshot.capture_window(mock_hwnd)
 
-    assert isinstance(result, PILImage.Image)
-    assert result.size == (800, 600)
-
-
-def test_capture_window_sets_foreground_before_capture():
-    """capture_window brings the target window to the foreground first."""
-    mock_hwnd = 12345
-    mock_rect = (0, 0, 800, 600)
-    fake_image = PILImage.new("RGB", (800, 600))
-
-    with patch("win32gui.SetForegroundWindow") as mock_foreground, \
-         patch("win32gui.GetWindowRect", return_value=mock_rect), \
-         patch("gemshot._printwindow_capture", return_value=fake_image):
-        result = gemshot.capture_window(mock_hwnd)
-
-    mock_foreground.assert_called_once_with(mock_hwnd)
+    mock_print.assert_called_once_with(mock_hwnd, 380, 160)
+    mock_grab.assert_not_called()
     assert isinstance(result, PILImage.Image)
 
 
-def test_capture_window_falls_back_to_imagegrab_on_error():
-    """capture_window falls back to ImageGrab.grab when PrintWindow fails."""
+def test_capture_window_qt_falls_back_to_window_then_bbox():
+    """Qt/PySide windows fall back from PrintWindow to window capture to bbox capture."""
     mock_hwnd = 12345
     mock_rect = (10, 20, 500, 400)
     fake_image = PILImage.new("RGB", (490, 380))
 
-    with patch("win32gui.SetForegroundWindow"), \
+    with patch("win32gui.IsIconic", return_value=False), \
          patch("win32gui.GetWindowRect", return_value=mock_rect), \
-         patch("gemshot._printwindow_capture", side_effect=RuntimeError("fail")), \
-         patch("PIL.ImageGrab.grab", return_value=fake_image) as mock_grab:
+         patch("win32gui.GetClassName", return_value="Qt5152QWindowIcon"), \
+         patch("gemshot._printwindow_capture", side_effect=RuntimeError("printwindow failed")), \
+         patch(
+             "PIL.ImageGrab.grab",
+             side_effect=[RuntimeError("window capture failed"), fake_image],
+         ) as mock_grab:
         result = gemshot.capture_window(mock_hwnd)
 
-    mock_grab.assert_called_once_with(bbox=(10, 20, 500, 400))
+    assert mock_grab.call_args_list == [
+        ((), {"window": mock_hwnd}),
+        ((), {"bbox": (10, 20, 500, 400), "all_screens": True}),
+    ]
     assert isinstance(result, PILImage.Image)
-
 
 def test_main_exits_with_message_when_no_windows():
     """main prints a message and exits cleanly when no windows are available."""
@@ -216,8 +265,8 @@ def test_main_exits_when_autocomplete_returns_unknown_label():
 def test_cmd_list_outputs_json_array(capsys):
     """cmd_list prints a JSON array of {hwnd, title, proc} to stdout."""
     windows = [
-        (101, "Notepad", "notepad.exe"),
-        (202, "Chrome", "chrome.exe"),
+        (101, "Qt Login", "python.exe"),
+        (202, "Qt Settings", "python.exe"),
     ]
     with patch("gemshot.list_windows", return_value=windows):
         gemshot.cmd_list()
@@ -225,8 +274,8 @@ def test_cmd_list_outputs_json_array(capsys):
     out = capsys.readouterr().out
     data = json.loads(out)
     assert data == [
-        {"hwnd": 101, "title": "Notepad", "proc": "notepad.exe"},
-        {"hwnd": 202, "title": "Chrome", "proc": "chrome.exe"},
+        {"hwnd": 101, "title": "Qt Login", "proc": "python.exe"},
+        {"hwnd": 202, "title": "Qt Settings", "proc": "python.exe"},
     ]
 
 
@@ -242,8 +291,8 @@ def test_cmd_list_outputs_empty_array_when_no_windows(capsys):
 def test_cmd_capture_outputs_json_on_success(capsys, tmp_path, monkeypatch):
     """cmd_capture prints JSON {path, hwnd, title, width, height} on success."""
     monkeypatch.chdir(tmp_path)
-    windows = [(12345, "Notepad", "notepad.exe")]
-    fake_img = PILImage.new("RGB", (800, 600))
+    windows = [(12345, "Qt Login", "python.exe")]
+    fake_img = PILImage.new("RGB", (380, 160))
 
     with patch("gemshot.list_windows", return_value=windows), \
          patch("gemshot.capture_window", return_value=fake_img):
@@ -252,9 +301,9 @@ def test_cmd_capture_outputs_json_on_success(capsys, tmp_path, monkeypatch):
     out = capsys.readouterr().out
     data = json.loads(out)
     assert data["hwnd"] == 12345
-    assert data["title"] == "Notepad"
-    assert data["width"] == 800
-    assert data["height"] == 600
+    assert data["title"] == "Qt Login"
+    assert data["width"] == 380
+    assert data["height"] == 160
     assert data["path"].endswith(".png")
 
 
@@ -275,7 +324,7 @@ def test_cmd_capture_prints_error_and_exits_when_hwnd_not_found(capsys):
 def test_cmd_capture_prints_error_and_exits_on_capture_failure(capsys, tmp_path, monkeypatch):
     """cmd_capture writes JSON error to stderr and exits 1 when capture raises."""
     monkeypatch.chdir(tmp_path)
-    windows = [(12345, "Notepad", "notepad.exe")]
+    windows = [(12345, "Qt Login", "python.exe")]
 
     with patch("gemshot.list_windows", return_value=windows), \
          patch("gemshot.capture_window", side_effect=Exception("win32 error")), \
