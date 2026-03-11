@@ -198,7 +198,9 @@ def cmd_capture(hwnd: int, prompt: str):
 
 
 def main():
-    """CLI entry point. No args → interactive. Subcommands: list, capture <hwnd>."""
+    """CLI entry point. No args → interactive. Subcommands: list, capture <hwnd> --prompt."""
+    load_dotenv()
+
     parser = argparse.ArgumentParser(
         prog="agent-gemshot",
         description="Screenshot visible Qt/PyQt/PySide windows.",
@@ -209,6 +211,11 @@ def main():
 
     capture_parser = subparsers.add_parser("capture", help="Screenshot a window by hwnd.")
     capture_parser.add_argument("hwnd", type=int, help="Window handle (from 'list').")
+    capture_parser.add_argument(
+        "--prompt",
+        required=True,
+        help="Analysis prompt sent to Gemini along with the screenshot.",
+    )
 
     args = parser.parse_args()
 
@@ -216,7 +223,7 @@ def main():
         cmd_list()
         return
     if args.cmd == "capture":
-        cmd_capture(args.hwnd)
+        cmd_capture(args.hwnd, args.prompt)
         return
 
     # No subcommand: original interactive mode

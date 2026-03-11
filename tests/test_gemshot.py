@@ -366,12 +366,21 @@ def test_main_routes_list_subcommand():
 
 
 def test_main_routes_capture_subcommand():
-    """main() with ['capture', '12345'] calls cmd_capture(12345)."""
+    """main() with ['capture', '12345', '--prompt', '...'] calls cmd_capture(12345, prompt)."""
     with patch("gemshot.cmd_capture") as mock_capture, \
-         patch("sys.argv", ["agent-gemshot", "capture", "12345"]):
+         patch("sys.argv", ["agent-gemshot", "capture", "12345", "--prompt", "分析界面"]):
         gemshot.main()
 
-    mock_capture.assert_called_once_with(12345)
+    mock_capture.assert_called_once_with(12345, "分析界面")
+
+
+def test_main_capture_requires_prompt():
+    """main() with ['capture', '12345'] (no --prompt) exits with code 2."""
+    with patch("sys.argv", ["agent-gemshot", "capture", "12345"]), \
+         pytest.raises(SystemExit) as exc_info:
+        gemshot.main()
+
+    assert exc_info.value.code == 2
 
 
 def test_main_capture_rejects_non_integer_hwnd():
