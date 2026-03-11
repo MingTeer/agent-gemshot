@@ -288,15 +288,15 @@ def test_cmd_list_outputs_empty_array_when_no_windows(capsys):
     assert json.loads(out) == []
 
 
-def test_cmd_capture_outputs_json_on_success(capsys, tmp_path, monkeypatch):
-    """cmd_capture prints JSON {path, hwnd, title, width, height} on success."""
-    monkeypatch.chdir(tmp_path)
+def test_cmd_capture_outputs_json_on_success(capsys):
+    """cmd_capture prints JSON with gemini_reply on success; no path field."""
     windows = [(12345, "Qt Login", "python.exe")]
     fake_img = PILImage.new("RGB", (380, 160))
 
     with patch("gemshot.list_windows", return_value=windows), \
-         patch("gemshot.capture_window", return_value=fake_img):
-        gemshot.cmd_capture(12345)
+         patch("gemshot.capture_window", return_value=fake_img), \
+         patch("gemshot.analyze_with_gemini", return_value="界面正常"):
+        gemshot.cmd_capture(12345, "分析界面")
 
     out = capsys.readouterr().out
     data = json.loads(out)
@@ -304,7 +304,9 @@ def test_cmd_capture_outputs_json_on_success(capsys, tmp_path, monkeypatch):
     assert data["title"] == "Qt Login"
     assert data["width"] == 380
     assert data["height"] == 160
-    assert data["path"].endswith(".png")
+    assert data["prompt"] == "分析界面"
+    assert data["gemini_reply"] == "界面正常"
+    assert "path" not in data
 
 
 def test_cmd_capture_prints_error_and_exits_when_hwnd_not_found(capsys):
@@ -313,7 +315,7 @@ def test_cmd_capture_prints_error_and_exits_when_hwnd_not_found(capsys):
 
     with patch("gemshot.list_windows", return_value=windows), \
          pytest.raises(SystemExit) as exc_info:
-        gemshot.cmd_capture(12345)
+        gemshot.cmd_capture(12345, "test prompt")
 
     assert exc_info.value.code == 1
     err = capsys.readouterr().err
@@ -321,20 +323,37 @@ def test_cmd_capture_prints_error_and_exits_when_hwnd_not_found(capsys):
     assert "not found" in data["error"]
 
 
-def test_cmd_capture_prints_error_and_exits_on_capture_failure(capsys, tmp_path, monkeypatch):
+def test_cmd_capture_prints_error_and_exits_on_capture_failure(capsys):
     """cmd_capture writes JSON error to stderr and exits 1 when capture raises."""
-    monkeypatch.chdir(tmp_path)
     windows = [(12345, "Qt Login", "python.exe")]
 
     with patch("gemshot.list_windows", return_value=windows), \
          patch("gemshot.capture_window", side_effect=Exception("win32 error")), \
          pytest.raises(SystemExit) as exc_info:
-        gemshot.cmd_capture(12345)
+        gemshot.cmd_capture(12345, "test prompt")
 
     assert exc_info.value.code == 1
     err = capsys.readouterr().err
     data = json.loads(err)
     assert "win32 error" in data["error"]
+
+
+def test_cmd_capture_prints_error_when_api_key_missing(capsys, monkeypatch):
+    """cmd_capture exits 1 with JSON error when GEMINI_API_KEY is not set."""
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    windows = [(12345, "Qt Login", "python.exe")]
+    fake_img = PILImage.new("RGB", (100, 100))
+
+    with patch("gemshot.list_windows", return_value=windows), \
+         patch("gemshot.capture_window", return_value=fake_img), \
+         patch("gemshot.analyze_with_gemini", side_effect=ValueError("GEMINI_API_KEY not set")), \
+         pytest.raises(SystemExit) as exc_info:
+        gemshot.cmd_capture(12345, "test prompt")
+
+    assert exc_info.value.code == 1
+    err = capsys.readouterr().err
+    data = json.loads(err)
+    assert "GEMINI_API_KEY" in data["error"]
 
 
 def test_main_routes_list_subcommand():

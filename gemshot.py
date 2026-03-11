@@ -173,8 +173,8 @@ def cmd_list():
     ]))
 
 
-def cmd_capture(hwnd: int):
-    """Capture window by hwnd; print JSON result to stdout or error to stderr."""
+def cmd_capture(hwnd: int, prompt: str):
+    """Capture window by hwnd, analyze with Gemini; print JSON result to stdout."""
     windows = list_windows()
     title = next((t for h, t, _ in windows if h == hwnd), None)
     if title is None:
@@ -183,13 +183,14 @@ def cmd_capture(hwnd: int):
 
     try:
         img = capture_window(hwnd)
-        path = save_image(img)
+        reply = analyze_with_gemini(img, prompt)
         print(json.dumps({
-            "path": path,
             "hwnd": hwnd,
             "title": title,
             "width": img.width,
             "height": img.height,
+            "prompt": prompt,
+            "gemini_reply": reply,
         }))
     except Exception as e:
         print(json.dumps({"error": str(e)}), file=sys.stderr)
