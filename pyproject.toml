@@ -12,6 +12,8 @@ dependencies = [
     "Pillow",
     "questionary",
     "psutil",
+    "google-genai",
+    "python-dotenv",
 ]
 
 [tool.setuptools]
