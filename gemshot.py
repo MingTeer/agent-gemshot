@@ -43,7 +43,11 @@ def capture_window(hwnd):
 
 
 def save_image(img):
-    pass
+    """Save PIL Image to cwd with timestamp filename. Returns the file path."""
+    filename = datetime.now().strftime("gemshot_%Y%m%d_%H%M%S.png")
+    path = os.path.join(os.getcwd(), filename)
+    img.save(path)
+    return path
 
 
 def main():

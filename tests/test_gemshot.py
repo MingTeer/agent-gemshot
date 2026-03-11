@@ -1,5 +1,8 @@
+import os
+import re
 from unittest.mock import patch, MagicMock
 import psutil
+from PIL import Image as PILImage
 import gemshot
 
 
@@ -66,3 +69,23 @@ def test_list_windows_uses_unknown_for_inaccessible_processes():
 
     assert result == [(mock_hwnd, "Some Window", "unknown")]
 
+
+def test_save_image_creates_png_in_cwd(tmp_path, monkeypatch):
+    """save_image saves a PNG with timestamp name in current directory."""
+    monkeypatch.chdir(tmp_path)
+    img = PILImage.new("RGB", (100, 100), color=(255, 0, 0))
+    path = gemshot.save_image(img)
+
+    assert os.path.exists(path)
+    assert path.startswith(str(tmp_path))
+    assert path.endswith(".png")
+    assert "gemshot_" in path
+
+
+def test_save_image_filename_format(tmp_path, monkeypatch):
+    """save_image filename matches gemshot_YYYYMMDD_HHMMSS.png pattern."""
+    monkeypatch.chdir(tmp_path)
+    img = PILImage.new("RGB", (10, 10))
+    path = gemshot.save_image(img)
+    filename = os.path.basename(path)
+    assert re.match(r"gemshot_\d{8}_\d{6}\.png", filename)
