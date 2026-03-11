@@ -1,4 +1,5 @@
 from unittest.mock import patch, MagicMock
+import psutil
 import gemshot
 
 
@@ -45,3 +46,23 @@ def test_list_windows_skips_empty_title_windows():
         result = gemshot.list_windows()
 
     assert result == []
+
+
+def test_list_windows_uses_unknown_for_inaccessible_processes():
+    """list_windows uses 'unknown' as proc_name when psutil raises access errors."""
+    mock_hwnd = 12345
+    mock_pid = 999
+
+    def fake_enum(callback, extra):
+        callback(mock_hwnd, extra)
+
+    with patch("win32gui.EnumWindows", side_effect=fake_enum), \
+         patch("win32gui.IsWindowVisible", return_value=True), \
+         patch("win32gui.GetWindowText", return_value="Some Window"), \
+         patch("win32process.GetWindowThreadProcessId", return_value=(0, mock_pid)), \
+         patch("psutil.Process") as mock_proc:
+        mock_proc.return_value.name.side_effect = psutil.NoSuchProcess(pid=mock_pid)
+        result = gemshot.list_windows()
+
+    assert result == [(mock_hwnd, "Some Window", "unknown")]
+
