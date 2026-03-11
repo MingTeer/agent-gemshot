@@ -6,7 +6,6 @@ from datetime import datetime
 
 import psutil
 import questionary
-import win32con
 import win32gui
 import win32process
 import win32ui
@@ -43,38 +42,32 @@ def _printwindow_capture(hwnd, width, height):
     bmp.CreateCompatibleBitmap(mfc_dc, width, height)
     save_dc.SelectObject(bmp)
 
-    # PW_RENDERFULLCONTENT (2) captures GPU/DX accelerated content too
-    result = win32gui.PrintWindow(hwnd, save_dc.GetSafeHdc(), 2)
+    try:
+        # PW_RENDERFULLCONTENT (2) captures GPU/DX accelerated content too
+        result = win32gui.PrintWindow(hwnd, save_dc.GetSafeHdc(), 2)
+        if not result:
+            raise RuntimeError("PrintWindow returned 0")
 
-    if not result:
+        bmp_info = bmp.GetInfo()
+        bmp_bits = bmp.GetBitmapBits(True)
+        return Image.frombuffer(
+            "RGB",
+            (bmp_info["bmWidth"], bmp_info["bmHeight"]),
+            bmp_bits,
+            "raw",
+            "BGRX",
+            0,
+            1,
+        )
+    finally:
         win32gui.DeleteObject(bmp.GetHandle())
         save_dc.DeleteDC()
         mfc_dc.DeleteDC()
         win32gui.ReleaseDC(hwnd, hwnd_dc)
-        raise RuntimeError("PrintWindow returned 0")
-
-    bmp_info = bmp.GetInfo()
-    bmp_bits = bmp.GetBitmapBits(True)
-    img = Image.frombuffer(
-        "RGB",
-        (bmp_info["bmWidth"], bmp_info["bmHeight"]),
-        bmp_bits,
-        "raw",
-        "BGRX",
-        0,
-        1,
-    )
-
-    win32gui.DeleteObject(bmp.GetHandle())
-    save_dc.DeleteDC()
-    mfc_dc.DeleteDC()
-    win32gui.ReleaseDC(hwnd, hwnd_dc)
-    return img
 
 
 def capture_window(hwnd):
     """Capture window by hwnd. Returns PIL Image. Falls back to screen grab on failure."""
-    win32gui.SetForegroundWindow(hwnd)
     left, top, right, bottom = win32gui.GetWindowRect(hwnd)
     width = right - left
     height = bottom - top

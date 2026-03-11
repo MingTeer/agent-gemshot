@@ -97,8 +97,7 @@ def test_capture_window_returns_pil_image():
     mock_rect = (0, 0, 800, 600)
     fake_image = PILImage.new("RGB", (800, 600))
 
-    with patch("win32gui.SetForegroundWindow"), \
-         patch("win32gui.GetWindowRect", return_value=mock_rect), \
+    with patch("win32gui.GetWindowRect", return_value=mock_rect), \
          patch("gemshot._printwindow_capture", return_value=fake_image):
         result = gemshot.capture_window(mock_hwnd)
 
@@ -112,8 +111,7 @@ def test_capture_window_falls_back_to_imagegrab_on_error():
     mock_rect = (10, 20, 500, 400)
     fake_image = PILImage.new("RGB", (490, 380))
 
-    with patch("win32gui.SetForegroundWindow"), \
-         patch("win32gui.GetWindowRect", return_value=mock_rect), \
+    with patch("win32gui.GetWindowRect", return_value=mock_rect), \
          patch("gemshot._printwindow_capture", side_effect=RuntimeError("fail")), \
          patch("PIL.ImageGrab.grab", return_value=fake_image) as mock_grab:
         result = gemshot.capture_window(mock_hwnd)
