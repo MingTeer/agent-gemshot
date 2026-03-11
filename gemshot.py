@@ -94,4 +94,36 @@ def save_image(img):
 
 
 def main():
-    pass
+    """CLI entry point: list windows, let user pick, capture, save."""
+    windows = list_windows()
+
+    if not windows:
+        print("未找到可用窗口。")
+        sys.exit(0)
+
+    choices = [
+        questionary.Choice(title=f"[{proc}] {title}", value=hwnd)
+        for hwnd, title, proc in windows
+    ]
+
+    try:
+        hwnd = questionary.select(
+            "选择要截图的窗口（方向键选择，回车确认，Ctrl+C 退出）:",
+            choices=choices,
+        ).ask()
+    except KeyboardInterrupt:
+        sys.exit(0)
+
+    if hwnd is None:
+        sys.exit(0)
+
+    try:
+        img = capture_window(hwnd)
+        path = save_image(img)
+        print(f"截图已保存: {path}")
+    except PermissionError:
+        print("错误: 当前目录无写入权限，请切换目录后重试。")
+        sys.exit(1)
+    except Exception as e:
+        print(f"截图失败: {e}")
+        sys.exit(1)
